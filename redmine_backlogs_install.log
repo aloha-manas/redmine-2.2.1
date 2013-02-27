@@ -1,0 +1,131 @@
+Migrating redmine_backlogs (Redmine Backlogs)...
+==  CreateStoriesTasksSprintsAndBurndown: migrating ===========================
+-- add_column(:issues, :position, :integer)
+   -> 0.4269s
+-- add_column(:issues, :story_points, :integer)
+   -> 0.4755s
+-- add_column(:issues, :remaining_hours, :float)
+   -> 0.3426s
+-- add_column(:versions, :sprint_start_date, :date, {:null=>true})
+   -> 0.3439s
+-- create_table(:burndown_days)
+   -> 0.2417s
+-- add_index(:burndown_days, :version_id)
+   -> 0.2759s
+-- execute("update issues set start_date = NULL where due_date < start_date")
+   -> 0.0004s
+==  CreateStoriesTasksSprintsAndBurndown: migrated (2.1073s) ==================
+
+==  MigrateLegacy: migrating ==================================================
+-- create_table(:rb_issue_history)
+   -> 0.0963s
+-- add_index(:rb_issue_history, :issue_id, {:unique=>true})
+   -> 0.2843s
+-- create_table(:rb_sprint_burndown)
+   -> 0.1325s
+-- add_index(:rb_sprint_burndown, :version_id, {:unique=>true})
+   -> 0.2925s
+==  MigrateLegacy: migrated (0.8091s) =========================================
+
+==  OrderTasksUsingTree: migrating ============================================
+==  OrderTasksUsingTree: migrated (0.0327s) ===================================
+
+==  ChangeIssuePositionColumn: migrating ======================================
+-- change_column(:issues, :position, :integer, {:null=>true, :default=>nil})
+   -> 0.0518s
+==  ChangeIssuePositionColumn: migrated (0.0519s) =============================
+
+==  AddReleaseTables: migrating ===============================================
+-- create_table(:releases)
+   -> 0.1207s
+-- create_table(:release_burndown_days)
+   -> 0.1766s
+==  AddReleaseTables: migrated (0.2974s) ======================================
+
+==  NullTaskPosition: migrating ===============================================
+-- execute("update issues set position = null where tracker_id = 2")
+   -> 0.0004s
+-- create_table(:backlogs_tmp_set_task_tracker)
+   -> 0.1301s
+-- execute("insert into backlogs_tmp_set_task_tracker (story_root_id, story_lft, story_rgt)\n                select root_id, lft, rgt from issues where tracker_id in (1,3)")
+   -> 0.0006s
+-- execute("update issues set tracker_id = 2\n              where exists (select 1 from backlogs_tmp_set_task_tracker where root_id = story_root_id and lft > story_lft and rgt < story_rgt)")
+   -> 0.0183s
+-- drop_table(:backlogs_tmp_set_task_tracker)
+   -> 0.0540s
+==  NullTaskPosition: migrated (0.2210s) ======================================
+
+==  ReinstateRemaining: migrating =============================================
+==  ReinstateRemaining: migrated (0.0012s) ====================================
+
+==  FractionalPoints: migrating ===============================================
+-- add_column(:issues, :fractional_story_points, :float)
+   -> 0.2796s
+-- execute("update issues set fractional_story_points = story_points")
+   -> 0.0005s
+-- remove_column(:issues, :story_points)
+   -> 0.3251s
+-- add_column(:issues, :story_points, :float)
+   -> 0.3175s
+-- execute("update issues set story_points = fractional_story_points")
+   -> 0.0004s
+-- remove_column(:issues, :fractional_story_points)
+   -> 0.2671s
+==  FractionalPoints: migrated (1.1906s) ======================================
+
+==  AddStoryPositions: migrating ==============================================
+-- execute("select max(position) from issues")
+   -> 0.0005s
+-- execute("update issues\n               set position =  + id\n               where position is null and tracker_id in (1,3)")
+   -> 0.0003s
+==  AddStoryPositions: migrated (0.0051s) =====================================
+
+==  AddIndexOnIssuesPosition: migrating =======================================
+-- add_index(:issues, :position)
+   -> 0.2560s
+==  AddIndexOnIssuesPosition: migrated (0.2560s) ==============================
+
+==  SumRemainingHours: migrating ==============================================
+-- create_table(:backlogs_tmp_story_remaining_hours)
+   -> 0.1267s
+-- execute("insert into backlogs_tmp_story_remaining_hours (tmp_id, tmp_root_id, tmp_lft, tmp_rgt, tmp_remaining_hours)\n               select id, root_id, lft, rgt, 0\n               from issues\n               where tracker_id in (1,3) and lft <> (rgt - 1)")
+   -> 0.0194s
+-- execute("insert into backlogs_tmp_story_remaining_hours (tmp_id, tmp_root_id, tmp_lft, tmp_rgt, tmp_remaining_hours)\n               select issues.id, root_id, lft, rgt, coalesce(remaining_hours, 0)\n               from backlogs_tmp_story_remaining_hours\n               join issues on tmp_root_id = root_id and lft > tmp_lft and rgt < tmp_rgt")
+   -> 0.0005s
+-- execute("update issues\n               set remaining_hours = (\n                        select sum(tmp_remaining_hours)\n                        from backlogs_tmp_story_remaining_hours\n                        where root_id = tmp_root_id and lft < tmp_lft and rgt > tmp_rgt and tmp_lft = (tmp_rgt - 1)\n               )\n               where lft <> (rgt - 1) and id in (select tmp_id from backlogs_tmp_story_remaining_hours)")
+   -> 0.0004s
+-- drop_table(:backlogs_tmp_story_remaining_hours)
+   -> 0.0779s
+==  SumRemainingHours: migrated (0.2291s) =====================================
+
+==  UniquePositions: migrating ================================================
+-- change_column(:issues, :position, :integer, {:null=>false})
+   -> 0.2864s
+-- add_column(:issues, :position_lock, :integer, {:null=>false, :default=>0})
+   -> 0.2845s
+-- add_index(:issues, [:position, :position_lock], {:unique=>true})
+   -> 0.2753s
+==  UniquePositions: migrated (0.8479s) =======================================
+
+==  TrustUniquePositions: migrating ===========================================
+-- remove_index(:issues, [:position, :position_lock])
+   -> 0.2859s
+-- remove_column(:issues, :position_lock)
+   -> 0.3437s
+==  TrustUniquePositions: migrated (0.6297s) ==================================
+
+==  AddRbProjectSettings: migrating ===========================================
+-- create_table(:rb_project_settings)
+   -> 0.1079s
+==  AddRbProjectSettings: migrated (0.1080s) ==================================
+
+==  RbAddHistory: migrating ===================================================
+Rebuilding history...
+Rebuild done
+==  RbAddHistory: migrated (0.0031s) ==========================================
+
+==  AddShowInScrumStatsProjectSetting: migrating ==============================
+-- add_column(:rb_project_settings, :show_in_scrum_stats, :boolean, {:default=>true, :null=>false})
+   -> 0.2842s
+==  AddShowInScrumStatsProjectSetting: migrated (0.2843s) =====================
+
